@@ -61,8 +61,6 @@ st.markdown("""
                  letter-spacing: 0.1em; margin: 0.25rem 0 0.2rem; }
   .result-card { background: #141414; border: 1px solid #222; border-radius: 10px;
                  padding: 1.5rem; height: 100%; }
-  .upload-box { background: #1a1a1a; border: 1px dashed #2a2a2a; border-radius: 6px;
-                padding: 1rem; margin-top: 0.5rem; text-align: center; }
   .pdf-success { background: #141f0a; border: 1px solid #1e3010; border-radius: 5px;
                  padding: 0.6rem 0.9rem; font-size: 0.82rem; color: #a8d870;
                  margin-top: 0.5rem; font-family: 'DM Mono', monospace; }
@@ -76,7 +74,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("# AI Resume Job-Fit Scorer")
-st.markdown('<p class="sub">// paste a job description + upload your resume PDF or paste text → get a fit score, gap analysis & rewritten bullets</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub">// upload your resume PDF + paste a job description → get a fit score, gap analysis & rewritten bullets</p>', unsafe_allow_html=True)
 
 
 def extract_text_from_pdf(pdf_file) -> str:
@@ -87,8 +85,8 @@ def extract_text_from_pdf(pdf_file) -> str:
     return text.strip()
 
 
-def analyze_resume(job_desc: str, resume: str) -> dict:
-    client = Groq(api_key=st.session_state.api_key)
+def analyze_resume(job_desc: str, resume: str, api_key: str) -> dict:
+    client = Groq(api_key=api_key)
 
     prompt = f"""You are a senior talent acquisition expert and career coach.
 
@@ -141,20 +139,23 @@ def score_color(score: int) -> str:
         return "#f05a5a"
 
 
-if "api_key" not in st.session_state:
-    st.session_state.api_key = ""
+# ── Auto-load API key from Streamlit secrets ─────────────────────────────────
+try:
+    api_key = st.secrets["GROQ_API_KEY"]
+except:
+    api_key = ""
 
-with st.expander("⚙  API key", expanded=not st.session_state.api_key):
-    key_input = st.text_input(
-        "Groq API key",
-        type="password",
-        value=st.session_state.api_key,
-        placeholder="gsk_...",
-        help="Get yours free at console.groq.com"
-    )
-    if key_input:
-        st.session_state.api_key = key_input
+if not api_key:
+    with st.expander("⚙  API key", expanded=True):
+        api_key = st.text_input(
+            "Groq API key",
+            type="password",
+            placeholder="gsk_...",
+            help="Get yours free at console.groq.com"
+        )
 
+
+# ── Input columns ─────────────────────────────────────────────────────────────
 col1, col2 = st.columns(2, gap="medium")
 
 with col1:
@@ -200,8 +201,8 @@ with btn_col:
     analyze_btn = st.button("ANALYZE FIT →")
 
 if analyze_btn:
-    if not st.session_state.api_key:
-        st.error("Add your Groq API key above first.")
+    if not api_key:
+        st.error("No API key found. Please add your Groq API key.")
     elif not job_desc.strip():
         st.warning("Paste a job description to continue.")
     elif not resume_text.strip():
@@ -209,7 +210,7 @@ if analyze_btn:
     else:
         with st.spinner("Analyzing fit..."):
             try:
-                result = analyze_resume(job_desc, resume_text)
+                result = analyze_resume(job_desc, resume_text, api_key)
                 score = result["fit_score"]
                 color = score_color(score)
 
