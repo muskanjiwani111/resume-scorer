@@ -2,6 +2,7 @@ import streamlit as st
 from groq import Groq
 import json
 import re
+import pdfplumber
 
 st.set_page_config(
     page_title="AI Resume Job-Fit Scorer",
@@ -60,13 +61,30 @@ st.markdown("""
                  letter-spacing: 0.1em; margin: 0.25rem 0 0.2rem; }
   .result-card { background: #141414; border: 1px solid #222; border-radius: 10px;
                  padding: 1.5rem; height: 100%; }
+  .upload-box { background: #1a1a1a; border: 1px dashed #2a2a2a; border-radius: 6px;
+                padding: 1rem; margin-top: 0.5rem; text-align: center; }
+  .pdf-success { background: #141f0a; border: 1px solid #1e3010; border-radius: 5px;
+                 padding: 0.6rem 0.9rem; font-size: 0.82rem; color: #a8d870;
+                 margin-top: 0.5rem; font-family: 'DM Mono', monospace; }
   div[data-testid="stMarkdownContainer"] p { font-size: 0.85rem; color: #999; line-height: 1.7; }
   .stTextArea { margin-bottom: 0.5rem; }
+  .stTabs [data-baseweb="tab-list"] { background: #1a1a1a; border-radius: 6px; padding: 4px; gap: 4px; }
+  .stTabs [data-baseweb="tab"] { background: transparent; color: #666; border-radius: 4px;
+                                  font-family: 'DM Mono', monospace; font-size: 0.75rem; }
+  .stTabs [aria-selected="true"] { background: #c8f05a !important; color: #0f0f0f !important; }
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown("# AI Resume Job-Fit Scorer")
-st.markdown('<p class="sub">// paste a job description + your resume → get a fit score, gap analysis & rewritten bullets</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub">// paste a job description + upload your resume PDF or paste text → get a fit score, gap analysis & rewritten bullets</p>', unsafe_allow_html=True)
+
+
+def extract_text_from_pdf(pdf_file) -> str:
+    with pdfplumber.open(pdf_file) as pdf:
+        text = ""
+        for page in pdf.pages:
+            text += page.extract_text() or ""
+    return text.strip()
 
 
 def analyze_resume(job_desc: str, resume: str) -> dict:
@@ -150,12 +168,32 @@ with col1:
 
 with col2:
     st.markdown('<div class="section-head">YOUR RESUME</div>', unsafe_allow_html=True)
-    resume = st.text_area(
-        "resume",
-        height=280,
-        placeholder="Paste your resume text here...",
-        label_visibility="collapsed"
-    )
+    resume_tab1, resume_tab2 = st.tabs(["📄 Upload PDF", "✏️ Paste Text"])
+
+    resume_text = ""
+
+    with resume_tab1:
+        uploaded_pdf = st.file_uploader(
+            "Upload your resume PDF",
+            type=["pdf"],
+            label_visibility="collapsed"
+        )
+        if uploaded_pdf:
+            try:
+                resume_text = extract_text_from_pdf(uploaded_pdf)
+                st.markdown(f'<div class="pdf-success">✓ PDF loaded — {len(resume_text)} characters extracted from {uploaded_pdf.name}</div>', unsafe_allow_html=True)
+            except Exception as e:
+                st.error(f"Could not read PDF: {str(e)}")
+
+    with resume_tab2:
+        pasted_text = st.text_area(
+            "resume_text",
+            height=220,
+            placeholder="Paste your resume text here...",
+            label_visibility="collapsed"
+        )
+        if pasted_text:
+            resume_text = pasted_text
 
 btn_col = st.columns([1, 2, 1])[1]
 with btn_col:
@@ -164,12 +202,14 @@ with btn_col:
 if analyze_btn:
     if not st.session_state.api_key:
         st.error("Add your Groq API key above first.")
-    elif not job_desc.strip() or not resume.strip():
-        st.warning("Paste both the job description and resume to continue.")
+    elif not job_desc.strip():
+        st.warning("Paste a job description to continue.")
+    elif not resume_text.strip():
+        st.warning("Upload a PDF or paste your resume text to continue.")
     else:
         with st.spinner("Analyzing fit..."):
             try:
-                result = analyze_resume(job_desc, resume)
+                result = analyze_resume(job_desc, resume_text)
                 score = result["fit_score"]
                 color = score_color(score)
 
@@ -228,6 +268,6 @@ if analyze_btn:
 st.markdown("""
 <div style="margin-top:3rem;padding-top:1rem;border-top:1px solid #1f1f1f;
      font-family:'DM Mono',monospace;font-size:0.7rem;color:#333;text-align:center;">
-  built with Groq API · streamlit · python &nbsp;·&nbsp; your API key is never stored
+  built with Groq API · streamlit · python &nbsp;·&nbsp; your resume is never stored
 </div>
 """, unsafe_allow_html=True)
